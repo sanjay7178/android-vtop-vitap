@@ -727,51 +727,73 @@ public class VTOPService extends Service {
          *  JSON response format
          *
          *  {
-         *      "cgpa": 8.58
+         *      "cgpa": 8.58,
          *      "total_credits": 64
          *  }
          */
         webView.evaluateJavascript("(function() {" +
-                "var data = 'verifyMenu=true&authorizedID=' + $('#authorizedIDX').val() + '&_csrf=' + $('input[name=\"_csrf\"]').val() + '&nocache=@(new Date().getTime())';" +
+                "var data = 'verifyMenu=true&authorizedID=' + $('#authorizedIDX').val() + '&_csrf=' + $('input[name=\"_csrf\"]').val() + '&nocache=' + (new Date().getTime());" +
                 "var response = {};" +
-                "$.ajax({" +
-                "    type: 'POST'," +
-                "    url : 'examinations/examGradeView/StudentGradeHistory'," +
-                "    data : data," +
-                "    async: false," +
-                "    success: function(res) {" +
-                "        var doc = new DOMParser().parseFromString(res, 'text/html');" +
-                "        var tables = doc.getElementsByTagName('table');" +
-                "        for (var i = tables.length - 1; i >= 0 ; --i) {" +
-                "            var headings = tables[i].getElementsByTagName('tr')[0].getElementsByTagName('td');" +
-                "            if (headings[0].innerText.toLowerCase().includes('credits')) {" +
-                "                var creditsIndex, cgpaIndex;" +
-                "                for (var j = 0; j < headings.length; ++j) {" +
-                "                    var heading = headings[j].innerText.toLowerCase();" +
-                "                    if (heading.includes('earned')) {" +
-                "                        creditsIndex = j + headings.length;" +
-                "                    } else if (heading.includes('cgpa')) {" +
-                "                        cgpaIndex = j + headings.length;" +
+                "if (typeof $ !== 'undefined') {" + // Check if jQuery is available
+                "    $.ajax({" +
+                "        type: 'POST'," +
+                "        url : 'examinations/examGradeView/StudentGradeHistory'," +
+                "        data : data," +
+                "        async: false," +
+                "        success: function(res) {" +
+                "            var doc = new DOMParser().parseFromString(res, 'text/html');" +
+                "            var tables = doc.getElementsByTagName('table');" +
+                "            for (var i = tables.length - 1; i >= 0; --i) {" +
+                "                var headings = tables[i].getElementsByTagName('tr')[0].getElementsByTagName('td');" +
+                "                if (headings[0].innerText.toLowerCase().includes('credits')) {" +
+                "                    var creditsIndex, cgpaIndex;" +
+                "                    for (var j = 0; j < headings.length; ++j) {" +
+                "                        var heading = headings[j].innerText.toLowerCase();" +
+                "                        if (heading.includes('earned')) {" +
+                "                            creditsIndex = j + headings.length;" +
+                "                        } else if (heading.includes('cgpa')) {" +
+                "                            cgpaIndex = j + headings.length;" +
+                "                        }" +
                 "                    }" +
+                "                    var cells = tables[i].getElementsByTagName('td');" +
+                "                    response.cgpa = parseFloat(cells[cgpaIndex].innerText) || 0;" +
+                "                    response.total_credits = parseFloat(cells[creditsIndex].innerText) || 0;" +
+                "                    break;" +
                 "                }" +
-                "                var cells = tables[i].getElementsByTagName('td');" +
-                "                response.cgpa = parseFloat(cells[cgpaIndex].innerText) || 0;" +
-                "                response.total_credits = parseFloat(cells[creditsIndex].innerText) || 0;" +
-                "                break;" +
                 "            }" +
+                "        }," +
+                "        error: function(err) {" +  // Add error handling for AJAX
+                "            console.error('AJAX request failed:', err);" +
+                "            response.cgpa = 0;" + // Set CGPA to 0 in case of error
+                "            response.total_credits = 0;" + // Set total credits to 0 in case of error
                 "        }" +
-                "    }" +
-                "});" +
+                "    });" +
+                "} else {" + // If jQuery is not available, log an error
+                "    response.cgpa = 0;" + // Set CGPA to 0 if jQuery is not available
+                "    response.total_credits = 0;" + // Set total credits to 0 if jQuery is not available
+                "}" +
                 "return response;" +
                 "})();", responseString -> {
             try {
-                JSONObject response = new JSONObject(responseString);
-                this.sharedPreferences.edit().putFloat("cgpa", (float) response.getDouble("cgpa")).apply();
-                this.sharedPreferences.edit().putFloat("totalCredits", (float) response.getDouble("total_credits")).apply();
+                if (responseString != null && !responseString.isEmpty()) {
+                    JSONObject response = new JSONObject(responseString);
 
-                this.downloadCourses();
+                    // Check if there's any error in the response
+                    // If no error is found, proceed with saving the values.
+                    this.sharedPreferences.edit().putFloat("cgpa", (float) response.getDouble("cgpa")).apply();
+                    this.sharedPreferences.edit().putFloat("totalCredits", (float) response.getDouble("total_credits")).apply();
+                    this.downloadCourses();
+                } else {
+                    // If no response, set CGPA and credits to 0
+                    this.sharedPreferences.edit().putFloat("cgpa", 0).apply();
+                    this.sharedPreferences.edit().putFloat("totalCredits", 0).apply();
+                    this.downloadCourses(); // Continue with further processing even if no data is fetched
+                }
             } catch (Exception e) {
-                error(302, e.getLocalizedMessage());
+                // If any exception occurs, set both values to 0
+                this.sharedPreferences.edit().putFloat("cgpa", 0).apply();
+                this.sharedPreferences.edit().putFloat("totalCredits", 0).apply();
+                this.downloadCourses();
             }
         });
     }
@@ -1982,7 +2004,6 @@ public class VTOPService extends Service {
                         staff.add(staffItem);
                     }
                 }
-
                 StaffDao staffDao = appDatabase.staffDao();
                 staffDao
                         .insert(staff)
