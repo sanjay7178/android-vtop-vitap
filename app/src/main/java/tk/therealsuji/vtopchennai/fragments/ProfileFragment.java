@@ -316,6 +316,16 @@ public class ProfileFragment extends Fragment {
                     "VIT Student is now Open Source!",
                     "Click to view the source code.",
                     context -> SettingsRepository.openBrowser(context, SettingsRepository.GITHUB_BASE_URL)
+
+            )
+    };
+
+    private final ItemData[] BugReport = {
+            new ItemData(
+                    R.drawable.ic_whats_new,
+                    "Found a Bug or need to request a feature?",
+                    "Click to report the bug or raise a request ticket",
+                    context -> SettingsRepository.openBrowser(context, SettingsRepository.FEEDBACK_FORM)
             )
     };
 
@@ -382,6 +392,7 @@ public class ProfileFragment extends Fragment {
         RecyclerView profileGroups = profileFragment.findViewById(R.id.recycler_view_profile_groups);
 
         announcements.setAdapter(new AnnouncementItemAdapter(announcementItems));
+        announcements.setAdapter(new AnnouncementItemAdapter(BugReport));
         profileGroups.setAdapter(new ProfileGroupAdapter(this.profileGroups, this.profileItems));
 
         return profileFragment;

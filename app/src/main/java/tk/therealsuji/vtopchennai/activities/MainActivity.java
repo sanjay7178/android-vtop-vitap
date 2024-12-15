@@ -9,6 +9,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.view.WindowManager;
 import android.widget.Toast;
+import androidx.appcompat.app.AlertDialog;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -49,8 +50,20 @@ import tk.therealsuji.vtopchennai.fragments.dialogs.UpdateDialogFragment;
 import tk.therealsuji.vtopchennai.helpers.AppDatabase;
 import tk.therealsuji.vtopchennai.helpers.SettingsRepository;
 import tk.therealsuji.vtopchennai.helpers.VTOPHelper;
+import tk.therealsuji.vtopchennai.interfaces.VersionApiService;
+import tk.therealsuji.vtopchennai.models.VersionInfo;
+
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import retrofit2.Retrofit;
+import retrofit2.converter.gson.GsonConverterFactory;
 
 public class MainActivity extends AppCompatActivity {
+
+    private static final String BASE_URL = "https://raw.githubusercontent.com/";
+
+    private VersionApiService versionApiService;
     BottomNavigationView bottomNavigationView;
     CompositeDisposable compositeDisposable = new CompositeDisposable();
     VTOPHelper vtopHelper;
@@ -216,6 +229,18 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        setContentView(R.layout.activity_main);
+
+        // Initialize Retrofit
+        Retrofit retrofit = new Retrofit.Builder()
+                .baseUrl(BASE_URL)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+
+        versionApiService = retrofit.create(VersionApiService.class);
+
+        // Fetch version information
+        fetchVersionInfo();
         boolean amoledMode = SettingsRepository.getSharedPreferences(this).getBoolean("amoledMode", false);
         SettingsRepository.applyDynamicColors(this, amoledMode);
         super.onCreate(savedInstanceState);
@@ -437,5 +462,98 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         compositeDisposable.dispose();
+    }
+
+    private void fetchVersionInfo() {
+        Call<VersionInfo> call = versionApiService.getVersionInfo();
+
+        // Execute the network request asynchronously
+        call.enqueue(new Callback<VersionInfo>() {
+            @Override
+            public void onResponse(Call<VersionInfo> call, Response<VersionInfo> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    VersionInfo versionInfo = response.body();
+
+                    // Extract version data
+                    String latestVersion = versionInfo.getLatest_version();
+                    String minSupportedVersion = versionInfo.getMin_supported_version();
+                    String updateUrl = versionInfo.getUpdate_url();
+
+                    // Check if the app version is outdated
+                    checkAppVersion(latestVersion, minSupportedVersion, updateUrl);
+                } else {
+                    Toast.makeText(MainActivity.this, "Failed to fetch version info", Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onFailure(Call<VersionInfo> call, Throwable t) {
+                Toast.makeText(MainActivity.this, "Error fetching version info", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    private void checkAppVersion(String latestVersion, String minSupportedVersion, String updateUrl) {
+        String currentVersion = getAppVersion();
+
+        if (isAppOutOfDate(currentVersion, latestVersion)) {
+            showUpdateDialog(updateUrl);
+        } else if (isAppVersionTooOld(currentVersion, minSupportedVersion)) {
+            showUpdateDialog(updateUrl);
+        }
+    }
+
+    private boolean isAppOutOfDate(String currentVersion, String latestVersion) {
+        return compareVersions(currentVersion, latestVersion) < 0;
+    }
+
+    private boolean isAppVersionTooOld(String currentVersion, String minSupportedVersion) {
+        return compareVersions(currentVersion, minSupportedVersion) < 0;
+    }
+
+    private int compareVersions(String version1, String version2) {
+        String[] version1Parts = version1.split("\\.");
+        String[] version2Parts = version2.split("\\.");
+
+        for (int i = 0; i < Math.min(version1Parts.length, version2Parts.length); i++) {
+            int v1 = Integer.parseInt(version1Parts[i]);
+            int v2 = Integer.parseInt(version2Parts[i]);
+
+            if (v1 < v2) return -1;
+            if (v1 > v2) return 1;
+        }
+
+        return 0;
+    }
+
+    private String getAppVersion() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "0.0.0";  // Default version if not found
+        }
+    }
+
+    private void showUpdateDialog(String updateUrl) {
+        new AlertDialog.Builder(this)
+                .setTitle("Update Required")
+                .setMessage("Your app is outdated. Please update to the latest version.")
+                .setCancelable(false)
+                .setPositiveButton("Update", (dialog, which) -> {
+                    try {
+                        Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(updateUrl));
+                        if (browserIntent.resolveActivity(getPackageManager()) != null) {
+                            startActivity(browserIntent);
+                        } else {
+                            Toast.makeText(this, "No browser found on the device.", Toast.LENGTH_SHORT).show();
+                        }
+                    } catch (Exception e) {
+                        Toast.makeText(this, "Unable to open update URL", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("Cancel", (dialog, which) -> {
+                    finish(); // Finish the app if Cancel is clicked
+                })
+                .show();
     }
 }
